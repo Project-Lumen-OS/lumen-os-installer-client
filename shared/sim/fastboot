@@ -1,0 +1,38 @@
+#!/bin/sh
+# Lumen Installer demo projector: fake fastboot (fastbootd of the XGIMI Z9X). Writes take a few seconds, like
+# the real thing, so the progress can be followed; nothing is written anywhere but the log in $FB.
+echo "$*" >> "$FB/fb.log"
+[ "$1" = --version ] && { echo "fastboot version 35.0.2-12147458"; exit 0; }
+mode=$(cat "$FB/mode")
+if [ "$1" = devices ]; then [ "$mode" = fastboot ] && [ -e "$FB/usb" ] && printf '%s\tfastboot\n' "$FB_SERIAL"; exit 0; fi
+[ "$1" = -s ] && shift 2
+dv=0; slot=""
+while :; do case "$1" in --disable-verity|--disable-verification) dv=1; shift ;; --slot=*) slot=${1#--slot=}; shift ;; *) break ;; esac; done
+[ "$mode" = fastboot ] && [ -e "$FB/usb" ] || { echo "< waiting for any device >" >&2; exit 1; }
+case "$1" in
+  getvar)
+    if [ "$2" = all ]; then cat "$FB/getvar" >&2
+    else v=$(sed -n "s/^(bootloader) $2:\(.*\)$/\1/p" "$FB/getvar" | head -1); echo "$2: $v" >&2; echo "Finished. Total time: 0.002s" >&2; fi ;;
+  reboot)
+    echo rebooting > "$FB/mode"
+    if [ -e "$FB/flashed" ]; then
+      cat "$FB/props.lumen" >> "$FB/props"; rm -f "$FB/flashed"
+      printf 'org.lumen.home\norg.lumen.projector\n' > "$FB/packages"; : > "$FB/packages3"
+      echo $(( $(date +%s) + 25 )) > "$FB/boot_at"
+    fi
+    ( sleep 5; echo android > "$FB/mode" ) >/dev/null 2>&1 & ;;
+  flash)
+    if [ "$2" = vbmeta ]; then   # the vbmeta step: both slots with --slot=all, verification off with the two flags
+      for x in $([ "$slot" = all ] && echo a b || echo a); do
+        echo "Sending 'vbmeta_$x' (4 KB)                         OKAY [  0.001s]" >&2
+        echo "Writing 'vbmeta_$x'                                OKAY [  0.002s]" >&2
+      done
+      [ "$dv" = 1 ] && rm -f "$FB/verity"; echo "Finished. Total time: 0.012s" >&2; exit 0
+    fi
+    echo "Sending sparse '$2' 1/4 (262140 KB)" >&2; sleep 7; touch "$FB/flashed"; echo "Writing '$2' OKAY" >&2 ;;
+  delete-logical-partition) sleep 1; echo "Deleting '$2' OKAY" >&2 ;;
+  create-logical-partition|resize-logical-partition) sleep 1 ;;
+  format*|--fs-options=*) sleep 2; echo "Formatting OKAY" >&2 ;;
+  *) ;;
+esac
+exit 0

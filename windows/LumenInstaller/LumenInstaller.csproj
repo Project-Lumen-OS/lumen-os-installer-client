@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>LumenInstaller</AssemblyName>
+    <RootNamespace>LumenInstaller</RootNamespace>
+    <Product>Lumen Installer</Product>
+    <Version>0.1.0</Version>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\logo.png" />
+    <Resource Include="Assets\app.ico" />
+  </ItemGroup>
+
+  <!-- The Lumen OS installer ships next to the exe (installer\): the device list, the pinned Platform-Tools checksum
+       and the Google allow-lists before a release is downloaded. Releases bring their own installer. It comes from
+       scripts\get_installer.ps1 (vendor\lumen-os\installer), or from -p:LumenOsInstaller=PATH. -->
+  <PropertyGroup>
+    <LumenOsInstaller Condition="'$(LumenOsInstaller)' == ''">$(MSBuildThisFileDirectory)..\..\vendor\lumen-os\installer</LumenOsInstaller>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="$(LumenOsInstaller)\**\*" Exclude="$(LumenOsInstaller)\tools\**" LinkBase="installer" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="CheckLumenOsInstaller" BeforeTargets="Build">
+    <Error Condition="!Exists('$(LumenOsInstaller)\lumen-install.ps1')"
+           Text="No Lumen OS installer in $(LumenOsInstaller). Run scripts\get_installer.ps1 (or scripts/get_installer.sh) first." />
+  </Target>
+
+</Project>

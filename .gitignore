@@ -1,0 +1,11 @@
+# builds
+macos/.build/
+macos/.build-dev/
+macos/dist/
+windows/LumenInstaller/bin/
+windows/LumenInstaller/obj/
+windows/publish/
+# the Lumen OS installer, fetched by scripts/get_installer.*
+vendor/
+.DS_Store
+*.user

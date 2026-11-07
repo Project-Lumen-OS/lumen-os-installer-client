@@ -1,0 +1,55 @@
+#!/bin/sh
+# Lumen Installer demo projector: a fake adb of an XGIMI Z9X on the USB cable (based on the installer's mock
+# tests, tools/ota/test/installer_profiles.sh). State in $FB: mode (android|fastboot|off), usb (cable in),
+# props, flashed, root, boot_at (epoch second the system finishes starting), verity (stock vbmeta: dm-verity on).
+echo "$*" >> "$FB/adb.log"
+case "$1" in start-server|kill-server|disconnect) exit 0 ;; esac
+[ "$1" = version ] && { echo "Android Debug Bridge version 1.0.41"; echo "Version 35.0.2-12147458"; exit 0; }
+[ "$1" = mdns ] && { echo "List of discovered mdns services"; exit 0; }
+[ "$1" = connect ] && { echo "failed to connect to '$2': Connection refused (demo projector is on the cable)"; exit 1; }
+mode=$(cat "$FB/mode")
+prop() { awk -v k="$1" 'index($0, k "=") == 1 { v = substr($0, length(k) + 2) } END { print v }' "$FB/props"; }
+booted() { b=$(cat "$FB/boot_at" 2>/dev/null || echo 0); [ "$(date +%s)" -ge "$b" ]; }
+if [ "$1" = devices ]; then
+  echo "List of devices attached"
+  if [ -e "$FB/usb" ] && [ "$mode" = android ]; then
+    if [ -e "$FB/unauthorized" ]; then printf '%s\tunauthorized usb:1-1 transport_id:1\n' "$FB_SERIAL"
+    else printf '%s\tdevice usb:1-1 product:%s model:%s device:%s transport_id:1\n' "$FB_SERIAL" "$(prop ro.product.name)" "$(prop ro.product.model)" "$(prop ro.product.device)"; fi
+  fi
+  echo; exit 0
+fi
+[ "$1" = -s ] && shift 2
+[ "$mode" = android ] && [ -e "$FB/usb" ] && [ ! -e "$FB/unauthorized" ] || { echo "adb: device '$FB_SERIAL' not found" >&2; exit 1; }
+case "$1" in
+  root) [ "$(prop ro.debuggable)" = 1 ] || { echo "adbd cannot run as root in production builds"; exit 1; }
+        touch "$FB/root"; echo "restarting adbd as root" ;;
+  unroot) rm -f "$FB/root" ;;
+  wait-for-device) ;;
+  pull) mkdir -p "$3" 2>/dev/null; echo "pulled $2" > "$3/$(basename "$2")"; echo "$2: 1 file pulled" ;;
+  reboot)
+    rm -f "$FB/root"
+    if [ "${2-}" = fastboot ]; then echo rebooting > "$FB/mode"; ( sleep 4; echo fastboot > "$FB/mode" ) >/dev/null 2>&1 &
+    else echo rebooting > "$FB/mode"; ( sleep 3; echo android > "$FB/mode" ) >/dev/null 2>&1 & fi ;;
+  shell)
+    shift
+    case "$*" in
+      getprop) awk -F= '{ k = $1; sub(/^[^=]*=/, ""); printf "[%s]: [%s]\n", k, $0 }' "$FB/props"
+               if booted; then echo "[sys.boot_completed]: [1]"; fi ;;
+      "getprop sys.boot_completed") booted && echo 1 ;;
+      "getprop "*) prop "$2" ;;
+      "id -u") [ -e "$FB/root" ] && echo 0 || echo 2000 ;;
+      "ls /dev/block/mapper/") if [ -e "$FB/verity" ]; then printf 'control\nsystem-verity\nsystem_a\nvendor-verity\nvendor_a\n'
+                               else printf 'control\nsystem_b\nvendor_b\n'; fi ;;
+      "pm list packages -3") sed 's/^/package:/' "$FB/packages3" ;;
+      "pm list packages") cat "$FB/packages3" "$FB/packages" | sed 's/^/package:/' ;;
+      "pm path "*) grep -qx "$3" "$FB/packages3" && echo "package:/data/app/$3-1/base.apk" ;;
+      "settings list "*) echo "$3_setting=1" ;;
+      "dumpsys media.audio_policy") echo "Outputs dump:"; echo "- Output 13 (speaker)" ;;
+      'mount | grep " /data "') echo "/dev/block/dm-9 on /data type f2fs (rw,lazytime)" ;;
+      "["*) exit 1 ;;
+      "sqlite3 "*) echo 3a7b11c0ffee1234 ;;
+      *) echo "UNEXPECTED shell $*" >> "$FB/unexpected"; exit 1 ;;
+    esac ;;
+  *) echo "UNEXPECTED $*" >> "$FB/unexpected"; exit 1 ;;
+esac
+exit 0
